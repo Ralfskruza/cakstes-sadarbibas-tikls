@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>School Staff Collaboration Network</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      /* Group Accent Colors */
+      --color-white: #FFFFFF;
+      --color-light-gray: #F0F0F0;
+      --color-yellow: #FFC000;
+      --color-dark-red: #800000;
+      --color-dark-green: #1A331A;
+      --color-blue: #2563EB;
+      --color-purple: #9333EA;
+      --color-teal: #0D9488;
+
+      /* UI Styling */
+      --font-family-base: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --font-size-base: 17px;
+      --link-color: #B8C4D0;
+      --link-hover: #4A5568;
+      --pill-bg: #FFFFFF;
+      --pill-border: #D8DFE8;
+      --pill-text: #1E293B;
+      --selected-border: #2B3A4A;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent !important;
+      font-family: var(--font-family-base);
+      font-size: var(--font-size-base);
+    }
+
+    #graph-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      touch-action: none;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    svg:active,
+    svg.is-panning {
+      cursor: grabbing !important;
+    }
+
+    /* Curved Links */
+    .link {
+      fill: none;
+      stroke: var(--link-color);
+      stroke-width: 1.8px;
+      stroke-linecap: round;
+      opacity: 0.72;
+      transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
+    }
+
+    .link:hover {
+      stroke: var(--link-hover);
+      stroke-width: 2.4px;
+      opacity: 1;
+    }
+
+    /* Pill Card Nodes */
+    .node {
+      cursor: pointer;
+      transition: opacity 0.25s ease;
+    }
+
+    .node .pill-card {
+      fill: var(--pill-bg);
+      stroke: var(--pill-border);
+      stroke-width: 1.25px;
+      filter: url(#pill-shadow);
+      transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease;
+    }
+
+    .node:hover .pill-card {
+      stroke: #A0AEC0;
+      stroke-width: 1.6px;
+      filter: url(#pill-shadow-hover);
+    }
+
+    .node .pill-text {
+      font-family: var(--font-family-base);
+      font-size: 13.5px;
+      font-weight: 500;
+      fill: var(--pill-text);
+      pointer-events: none;
+      letter-spacing: -0.01em;
+    }
+
+    .node .group-dot {
+      transition: r 0.2s ease;
+    }
+
+    .node:hover .group-dot {
+      r: 6.5px;
+    }
+
+    /* Pin badge indicator (visible on locked/pinned nodes) */
+    .node .pin-badge {
+      display: none;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
+    }
+
+    /* Pinned & Selected Pill State: Thicker Yellow (#FFC000) border */
+    .node.is-pinned .pill-card,
+    .node.is-selected .pill-card {
+      stroke: var(--color-yellow, #FFC000) !important;
+      stroke-width: 3.2px !important;
+      filter: url(#pill-shadow-selected) !important;
+    }
+
+    .node.is-pinned .pin-badge {
+      display: block;
+    }
+
+    /* Brush Selection Box */
+    .brush .selection {
+      fill: rgba(37, 99, 235, 0.12);
+      stroke: #2563EB;
+      stroke-width: 1.5px;
+      stroke-dasharray: 4, 4;
+      rx: 6px;
+      ry: 6px;
+    }
+
+    /* Brush layer control: strictly hidden when Shift is not pressed so canvas pan is unobstructed */
+    .brush-overlay-inactive,
+    .brush-overlay-inactive * {
+      display: none !important;
+      pointer-events: none !important;
+    }
+    .brush-overlay-active,
+    .brush-overlay-active * {
+      display: block !important;
+      pointer-events: all !important;
+      cursor: crosshair !important;
+    }
+
+    /* UI Hint */
+    .interaction-hint {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      font-size: 12px;
+      color: rgba(71, 85, 105, 0.75);
+      background: rgba(255, 255, 255, 0.85);
+      padding: 5px 12px;
+      border-radius: 20px;
+      pointer-events: none;
+      font-family: var(--font-family-base);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</head>
+<body>
+  <div id="graph-container">
+    <div class="interaction-hint">
+      🖱️ Spied un velc fonu, lai skatītos apkārt | Klikšķis nofiksē/palaiž personu (📌) | Rullītis pietuvina | Shift + velc: atzīmēt
+    </div>
+  </div>
+
+  <script>
+    /**
+     * GOOGLE SHEETS LIVE CSV URLS
+     */
+    const NODES_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVxheZ723PTu4hQ0appbIlnTNu_uUnCET2u_TSl_kZnNp5SCyjsEqaq3_vur1mgQVJI5zhy-JD-WoT/pub?gid=0&single=true&output=csv";
+    const LINKS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVxheZ723PTu4hQ0appbIlnTNu_uUnCET2u_TSl_kZnNp5SCyjsEqaq3_vur1mgQVJI5zhy-JD-WoT/pub?gid=788568470&single=true&output=csv";
+
+    /**
+     * VIBRANT GROUP PALETTE
+     * Matches the color dots in staff capsule badges.
+     */
+    const PALETTE = [
+      "#FFC000", // Yellow / Amber
+      "#2563EB", // Blue
+      "#9333EA", // Purple
+      "#0D9488", // Teal / Cyan
+      "#1A331A", // Dark Green
+      "#800000", // Dark Red
+      "#EA580C", // Orange
+      "#DB2777"  // Pink
+    ];
+
+    const colorScale = d3.scaleOrdinal().range(PALETTE);
+
+    // Canvas dimensions for viewBox (100% responsive fluid scaling)
+    const width = 1600;
+    const height = 1000;
+    const pillHeight = 34;
+    const pillRadius = 17;
+
+    // Selection tracking set
+    const selectedNodeIds = new Set();
+
+    // DOM Elements
+    const container = document.getElementById("graph-container");
+
+    // Create SVG with responsive viewBox
+    const svg = d3.select("#graph-container")
+      .append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("preserveAspectRatio", "xMidYMid meet");
+
+    // Seamless canvas backdrop ensuring 100% of background captures mouse pan
+    svg.append("rect")
+      .attr("class", "canvas-backdrop")
+      .attr("width", "100%")
+      .attr("height", "100%")
+      .attr("fill", "transparent")
+      .attr("pointer-events", "all");
+
+    // Define Soft Drop Shadows
+    const defs = svg.append("defs");
+
+    // Standard pill shadow
+    const filterNormal = defs.append("filter")
+      .attr("id", "pill-shadow")
+      .attr("x", "-20%").attr("y", "-30%").attr("width", "140%").attr("height", "180%");
+    filterNormal.append("feDropShadow")
+      .attr("dx", 0).attr("dy", 2).attr("stdDeviation", 3.5)
+      .attr("flood-color", "#0F172A").attr("flood-opacity", 0.08);
+
+    // Hover shadow
+    const filterHover = defs.append("filter")
+      .attr("id", "pill-shadow-hover")
+      .attr("x", "-25%").attr("y", "-35%").attr("width", "150%").attr("height", "190%");
+    filterHover.append("feDropShadow")
+      .attr("dx", 0).attr("dy", 4).attr("stdDeviation", 6)
+      .attr("flood-color", "#0F172A").attr("flood-opacity", 0.16);
+
+    // Selected pill shadow (warm glow for pinned state)
+    const filterSelected = defs.append("filter")
+      .attr("id", "pill-shadow-selected")
+      .attr("x", "-25%").attr("y", "-35%").attr("width", "150%").attr("height", "190%");
+    filterSelected.append("feDropShadow")
+      .attr("dx", 0).attr("dy", 3).attr("stdDeviation", 6)
+      .attr("flood-color", "#FFC000").attr("flood-opacity", 0.45);
+
+    // Root zoom container group
+    const gRoot = svg.append("g").attr("class", "zoom-container");
+
+    // Layers (links below, nodes above)
+    const gLinks = gRoot.append("g").attr("class", "links-layer");
+    const gNodes = gRoot.append("g").attr("class", "nodes-layer");
+    const gBrush = gRoot.append("g").attr("class", "brush brush-overlay-inactive");
+
+    /**
+     * ZOOM & PAN BEHAVIOR
+     * Smooth gliding pan when clicking and dragging anywhere on the canvas background
+     */
+    const zoom = d3.zoom()
+      .scaleExtent([0.15, 6])
+      .filter(event => {
+        // Reserved for brush selection when Shift key is pressed
+        if (event.shiftKey) return false;
+        // Only trigger on primary (left) mouse button or touch
+        if (event.type === "mousedown" && event.button !== 0) return false;
+        return true;
+      })
+      .on("start", (event) => {
+        if (event.sourceEvent) {
+          svg.classed("is-panning", true);
+        }
+      })
+      .on("zoom", (event) => {
+        gRoot.attr("transform", event.transform);
+      })
+      .on("end", () => {
+        svg.classed("is-panning", false);
+      });
+
+    svg.call(zoom).on("dblclick.zoom", null);
+
+    /**
+     * KEYBOARD LISTENERS FOR SHIFT-TO-BRUSH
+     */
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Shift") {
+        gBrush.classed("brush-overlay-inactive", false).classed("brush-overlay-active", true);
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "Shift") {
+        gBrush.classed("brush-overlay-active", false).classed("brush-overlay-inactive", true);
+      }
+    });
+
+    /**
+     * EMBEDDED DATASET FOR INSTANT LOADING & LOCAL FILE SUPPORT
+     */
+    const FALLBACK_NODES = [
+      { id: "1", name: "Direktors", group: "Vadība" },
+      { id: "2", name: "Mācību pārzine", group: "Vadība" },
+      { id: "3", name: "Lietvedis", group: "Administrācija" },
+      { id: "4", name: "IT administrators", group: "Administrācija" },
+      { id: "5", name: "Matemātikas skolotājs", group: "Eksaktie priekšmeti" },
+      { id: "6", name: "Fizikas skolotājs", group: "Eksaktie priekšmeti" },
+      { id: "7", name: "Ķīmijas skolotājs", group: "Eksaktie priekšmeti" },
+      { id: "8", name: "Bioloģijas skolotājs", group: "Eksaktie priekšmeti" },
+      { id: "9", name: "Datorikas skolotājs", group: "Eksaktie priekšmeti" },
+      { id: "10", name: "Latviešu valodas skolotājs", group: "Humanitārie priekšmeti" },
+      { id: "11", name: "Angļu valodas skolotājs", group: "Humanitārie priekšmeti" },
+      { id: "12", name: "Vēstures skolotājs", group: "Humanitārie priekšmeti" },
+      { id: "13", name: "Vācu valodas skolotājs", group: "Humanitārie priekšmeti" },
+      { id: "14", name: "Mūzikas skolotājs", group: "Māksla un Sports" },
+      { id: "15", name: "Vizuālās mākslas skolotājs", group: "Māksla un Sports" },
+      { id: "16", name: "Sporta skolotājs", group: "Māksla un Sports" },
+      { id: "17", name: "Skolas psihologs", group: "Atbalsta personāls" },
+      { id: "18", name: "Sociālais pedagogs", group: "Atbalsta personāls" },
+      { id: "19", name: "Bibliotekārs", group: "Atbalsta personāls" }
+    ];
+
+    const FALLBACK_LINKS = [
+      { source: "1", target: "2" },
+      { source: "16", target: "1" }
+    ];
+
+    /**
+     * INITIALIZE NETWORK
+     */
+    async function initGraph() {
+      // Append timestamp to bypass browser cache and get latest Google Sheets edits
+      const freshUrl = (url) => url + (url.includes("?") ? "&" : "?") + "_cacheBust=" + Date.now();
+
+      try {
+        const [nodesData, linksData] = await Promise.all([
+          d3.csv(freshUrl(NODES_CSV_URL)),
+          d3.csv(freshUrl(LINKS_CSV_URL))
+        ]);
+
+        if (!nodesData || !nodesData.length) {
+          throw new Error("Nodes CSV empty");
+        }
+
+        renderNetwork(nodesData, linksData || []);
+      } catch (err) {
+        console.warn("Could not fetch live Google Sheets data directly (browser file:// origin restriction). Using fallback dataset:", err);
+        renderNetwork(FALLBACK_NODES, FALLBACK_LINKS);
+      }
+    }
+
+    /**
+     * RENDER D3 FORCE GRAPH WITH CAPSULE PILLS & CLUSTERING
+     */
+    function renderNetwork(rawNodes, rawLinks) {
+      const getVal = (row, ...names) => {
+        const keys = Object.keys(row);
+        for (const name of names) {
+          const match = keys.find(k => k.trim().toLowerCase() === name.toLowerCase());
+          if (match && row[match] !== undefined && row[match] !== null && String(row[match]).trim() !== "") {
+            return String(row[match]).trim();
+          }
+        }
+        return "";
+      };
+
+      // Clean nodes and compute custom pill card widths
+      const nodes = rawNodes
+        .map((d, index) => {
+          const id = getVal(d, "id") || String(index + 1);
+          const name = getVal(d, "name") || id;
+          const group = getVal(d, "group", "department", "team") || "Default";
+          // Calculate pill width based on text length (min 115px)
+          const pillWidth = Math.max(115, name.length * 8.4 + 48);
+          return { id, name, group, pillWidth };
+        })
+        .filter(d => d.id !== "");
+
+      const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+      // Filter valid links
+      const links = rawLinks
+        .map(d => ({
+          source: getVal(d, "source", "from"),
+          target: getVal(d, "target", "to")
+        }))
+        .filter(d => d.source && d.target && nodeMap.has(d.source) && nodeMap.has(d.target));
+
+      // Group domains and group cluster targets
+      const uniqueGroups = Array.from(new Set(nodes.map(d => d.group))).sort();
+      colorScale.domain(uniqueGroups);
+
+      /**
+       * GROUP CLUSTERING CALCULATIONS ("Grupas turas kopā")
+       * Assigns each department/group a circular centroid hub around the canvas center.
+       */
+      const groupCount = uniqueGroups.length;
+      const groupCenters = new Map();
+      const clusterOrbitRadius = 360;
+
+      uniqueGroups.forEach((group, i) => {
+        const angle = (i / groupCount) * 2 * Math.PI - Math.PI / 2;
+        groupCenters.set(group, {
+          x: width / 2 + clusterOrbitRadius * Math.cos(angle),
+          y: height / 2 + clusterOrbitRadius * Math.sin(angle)
+        });
+      });
+
+      /**
+       * D3 FORCE SIMULATION
+       */
+      const simulation = d3.forceSimulation(nodes)
+        // Group clustering forces: gently pull each node to its group's cluster region
+        .force("clusterX", d3.forceX(d => {
+          const center = groupCenters.get(d.group);
+          return center ? center.x : width / 2;
+        }).strength(0.24))
+        .force("clusterY", d3.forceY(d => {
+          const center = groupCenters.get(d.group);
+          return center ? center.y : height / 2;
+        }).strength(0.24))
+        // Link distances
+        .force("link", d3.forceLink(links).id(d => d.id).distance(135).strength(0.35))
+        // Node repulsion
+        .force("charge", d3.forceManyBody().strength(-240))
+        // Center gravity
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        // Collision detection sized to pill cards so capsules don't overlap
+        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + 16).iterations(3));
+
+      // Draw Smooth Curved Links
+      const link = gLinks.selectAll(".link")
+        .data(links)
+        .join("path")
+        .attr("class", "link");
+
+      // Draw Pill Capsule Node Groups
+      const node = gNodes.selectAll(".node")
+        .data(nodes)
+        .join("g")
+        .attr("class", "node")
+        .call(d3.drag()
+          .on("start", (event, d) => {
+            if (event.sourceEvent) event.sourceEvent.stopPropagation();
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            // If pinned, stays locked at its new dragged position; if not pinned, dynamic simulation resumes
+            if (!d.isPinned) {
+              d.fx = null;
+              d.fy = null;
+            }
+          })
+        );
+
+      // Pill Background Capsule
+      node.append("rect")
+        .attr("class", "pill-card")
+        .attr("x", d => -d.pillWidth / 2)
+        .attr("y", -pillHeight / 2)
+        .attr("width", d => d.pillWidth)
+        .attr("height", pillHeight)
+        .attr("rx", pillRadius)
+        .attr("ry", pillRadius);
+
+      // Colored Department Dot on Left
+      node.append("circle")
+        .attr("class", "group-dot")
+        .attr("cx", d => -d.pillWidth / 2 + 15)
+        .attr("cy", 0)
+        .attr("r", 5)
+        .attr("fill", d => colorScale(d.group));
+
+      // Staff Member Name Text
+      node.append("text")
+        .attr("class", "pill-text")
+        .attr("x", d => -d.pillWidth / 2 + 27)
+        .attr("y", 4.5)
+        .text(d => d.name);
+
+      // Pin indicator on top-right for locked/pinned nodes (enlarged badge)
+      const pinBadge = node.append("g")
+        .attr("class", "pin-badge")
+        .attr("transform", d => `translate(${d.pillWidth / 2 - 2}, -15)`);
+
+      // Circular button backdrop with warm yellow border
+      pinBadge.append("circle")
+        .attr("r", 13.5)
+        .attr("fill", "#FFFFFF")
+        .attr("stroke", "#FFC000")
+        .attr("stroke-width", 2);
+
+      // Emoji pin 📌 (larger size)
+      pinBadge.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("font-size", "17px")
+        .attr("y", 0.5)
+        .text("📌");
+
+      // Pin / Unpin on click
+      node.on("click", (event, d) => {
+        event.stopPropagation();
+        if (d.isPinned) {
+          // Unpin and release back to dynamic simulation
+          d.isPinned = false;
+          d.fx = null;
+          d.fy = null;
+          selectedNodeIds.delete(d.id);
+        } else {
+          // Lock and pin in current position
+          d.isPinned = true;
+          d.fx = d.x;
+          d.fy = d.y;
+          selectedNodeIds.add(d.id);
+        }
+        simulation.alpha(0.2).restart();
+        applyVisualHighlights();
+      });
+
+      // Clear selection contrast on background click (keeps pinned nodes pinned)
+      svg.on("click", (event) => {
+        if (event.target === svg.node() || event.target.classList.contains("canvas-backdrop")) {
+          selectedNodeIds.clear();
+          nodes.forEach(n => {
+            if (n.isPinned) selectedNodeIds.add(n.id);
+          });
+          applyVisualHighlights();
+        }
+      });
+
+      /**
+       * BRUSH SELECTION
+       */
+      const brush = d3.brush()
+        .extent([[ -width * 2, -height * 2 ], [ width * 3, height * 3 ]])
+        .on("brush", (event) => {
+          if (!event.selection) return;
+          const [[x0, y0], [x1, y1]] = event.selection;
+
+          selectedNodeIds.clear();
+          nodes.forEach(d => {
+            if (d.x >= x0 && d.x <= x1 && d.y >= y0 && d.y <= y1) {
+              selectedNodeIds.add(d.id);
+            }
+          });
+          applyVisualHighlights();
+        })
+        .on("end", (event) => {
+          if (!event.sourceEvent) return;
+          if (!event.selection) {
+            selectedNodeIds.clear();
+            applyVisualHighlights();
+          } else {
+            gBrush.call(brush.move, null);
+          }
+        });
+
+      gBrush.call(brush);
+
+      /**
+       * VISUAL STATE UPDATE
+       * Highlights pinned/selected nodes while keeping all other nodes and links 100% visible.
+       */
+      function applyVisualHighlights() {
+        node.each(function(d) {
+          const isSelected = selectedNodeIds.has(d.id) || !!d.isPinned;
+          d3.select(this)
+            .classed("is-selected", isSelected)
+            .classed("is-pinned", !!d.isPinned);
+        });
+      }
+
+      /**
+       * CURVED LINK GENERATOR
+       * Creates soft, organic curved paths between pill cards
+       */
+      function computeCurvedPath(d) {
+        const dx = d.target.x - d.source.x;
+        const dy = d.target.y - d.source.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Organic curve arc offset
+        const curveOffset = Math.min(26, dist * 0.1);
+        const mx = (d.source.x + d.target.x) / 2 - (dy / (dist || 1)) * curveOffset;
+        const my = (d.source.y + d.target.y) / 2 + (dx / (dist || 1)) * curveOffset;
+
+        return `M ${d.source.x} ${d.source.y} Q ${mx} ${my} ${d.target.x} ${d.target.y}`;
+      }
+
+      /**
+       * SIMULATION TICK
+       */
+      simulation.on("tick", () => {
+        link.attr("d", computeCurvedPath);
+        node.attr("transform", d => `translate(${d.x},${d.y})`);
+      });
+    }
+
+    // Initialize graph
+    initGraph();
+  </script>
+</body>
+</html>

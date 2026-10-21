@@ -1,0 +1,20 @@
+id,name,group
+1,Direktors,Vadība
+2,Mācību pārzine,Vadība
+3,Lietvedis,Administrācija
+4,IT administrators,Administrācija
+5,Matemātikas skolotājs,Eksaktie priekšmeti
+6,Fizikas skolotājs,Eksaktie priekšmeti
+7,Ķīmijas skolotājs,Eksaktie priekšmeti
+8,Bioloģijas skolotājs,Eksaktie priekšmeti
+9,Datorikas skolotājs,Eksaktie priekšmeti
+10,Latviešu valodas skolotājs,Humanitārie priekšmeti
+11,Angļu valodas skolotājs,Humanitārie priekšmeti
+12,Vēstures skolotājs,Humanitārie priekšmeti
+13,Vācu valodas skolotājs,Humanitārie priekšmeti
+14,Mūzikas skolotājs,Māksla un Sports
+15,Vizuālās mākslas skolotājs,Māksla un Sports
+16,Sporta skolotājs,Māksla un Sports
+17,Skolas psihologs,Atbalsta personāls
+18,Sociālais pedagogs,Atbalsta personāls
+19,Bibliotekārs,Atbalsta personāls
