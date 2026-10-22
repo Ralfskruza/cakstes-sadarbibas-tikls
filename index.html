@@ -479,10 +479,15 @@
 
       // Clean nodes and compute custom pill card dimensions based on size scale
       const nodes = rawNodes
+        .filter(d => {
+          const name = getVal(d, "name");
+          const id = getVal(d, "id");
+          return name !== "" || id !== "";
+        })
         .map((d, index) => {
           const id = getVal(d, "id") || String(index + 1);
-          const name = getVal(d, "name") || id;
-          const group = getVal(d, "group", "department", "team") || "Default";
+          const name = getVal(d, "name") || `Persona ${id}`;
+          const group = getVal(d, "group", "department", "team") || "Cits";
           
           // Parse size: numeric (1, 2, 3), default to 1
           const rawSize = getVal(d, "size", "scale", "importance", "level");
@@ -674,11 +679,6 @@
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "central")
         .attr("font-size", d => `${d.pinFontSize}px`)
-        .attr("y", 0.5)
-        .text("📌");
-        .attr("text-anchor", "middle")
-        .attr("dominant-baseline", "central")
-        .attr("font-size", "20px")
         .attr("y", 0.5)
         .text("📌");
 
