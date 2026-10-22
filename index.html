@@ -71,7 +71,7 @@
     .link {
       fill: none;
       stroke: var(--link-color);
-      stroke-width: 1.8px;
+      stroke-width: 2.4px;
       stroke-linecap: round;
       opacity: 0.72;
       transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
@@ -79,7 +79,7 @@
 
     .link:hover {
       stroke: var(--link-hover);
-      stroke-width: 2.4px;
+      stroke-width: 3.4px;
       opacity: 1;
     }
 
@@ -90,22 +90,22 @@
     }
 
     .node .pill-card {
-      stroke-width: 1.5px;
+      stroke-width: 2px;
       filter: url(#pill-shadow);
       transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease, transform 0.15s ease;
     }
 
     .node:hover .pill-card {
-      stroke-width: 2px;
+      stroke-width: 2.6px;
       filter: url(#pill-shadow-hover);
     }
 
     .node .pill-text {
       font-family: var(--font-family-base);
-      font-size: 13.5px;
-      font-weight: 600;
+      font-size: 19px;
+      font-weight: 700;
       pointer-events: none;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.015em;
       text-anchor: middle;
     }
 
@@ -303,10 +303,10 @@
     }
 
     // Canvas dimensions for viewBox (100% responsive fluid scaling)
-    const width = 1600;
-    const height = 1000;
-    const pillHeight = 34;
-    const pillRadius = 17;
+    const width = 1800;
+    const height = 1200;
+    const pillHeight = 52;
+    const pillRadius = 26;
 
     // Selection tracking set
     const selectedNodeIds = new Set();
@@ -480,8 +480,8 @@
           const id = getVal(d, "id") || String(index + 1);
           const name = getVal(d, "name") || id;
           const group = getVal(d, "group", "department", "team") || "Default";
-          // Calculate pill width based on text length (min 110px)
-          const pillWidth = Math.max(110, name.length * 8.8 + 36);
+          // Calculate pill width based on larger 19px text length (min 140px)
+          const pillWidth = Math.max(140, name.length * 12.2 + 48);
           return { id, name, group, pillWidth };
         })
         .filter(d => d.id !== "");
@@ -509,7 +509,7 @@
        */
       const groupCount = uniqueGroups.length;
       const groupCenters = new Map();
-      const clusterOrbitRadius = 360;
+      const clusterOrbitRadius = 460;
 
       uniqueGroups.forEach((group, i) => {
         const angle = (i / groupCount) * 2 * Math.PI - Math.PI / 2;
@@ -533,13 +533,13 @@
           return center ? center.y : height / 2;
         }).strength(0.24))
         // Link distances
-        .force("link", d3.forceLink(links).id(d => d.id).distance(135).strength(0.35))
+        .force("link", d3.forceLink(links).id(d => d.id).distance(170).strength(0.35))
         // Node repulsion
-        .force("charge", d3.forceManyBody().strength(-240))
+        .force("charge", d3.forceManyBody().strength(-380))
         // Center gravity
         .force("center", d3.forceCenter(width / 2, height / 2))
-        // Collision detection sized to pill cards so capsules don't overlap
-        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + 16).iterations(3));
+        // Collision detection sized to larger pill cards so capsules don't overlap
+        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + 22).iterations(3));
 
       // Draw Smooth Curved Links
       const link = gLinks.selectAll(".link")
@@ -588,31 +588,31 @@
           return c ? c.darker(0.35).formatHex() : "rgba(0,0,0,0.15)";
         });
 
-      // Centered Staff Member Name Text with Automatic Contrast Color
+      // Centered Staff Member Name Text with Automatic Contrast Color (Large 19px)
       node.append("text")
         .attr("class", "pill-text")
         .attr("x", 0)
-        .attr("y", 4.5)
+        .attr("y", 6.5)
         .attr("fill", d => getContrastTextColor(colorScale(d.group)))
         .text(d => d.name);
 
-      // Pin indicator on top-right for locked/pinned nodes (enlarged badge)
+      // Pin indicator on top-right for locked/pinned nodes (large badge)
       const pinBadge = node.append("g")
         .attr("class", "pin-badge")
-        .attr("transform", d => `translate(${d.pillWidth / 2 - 2}, -15)`);
+        .attr("transform", d => `translate(${d.pillWidth / 2 - 4}, -20)`);
 
       // Circular button backdrop with warm yellow border
       pinBadge.append("circle")
-        .attr("r", 13.5)
+        .attr("r", 16)
         .attr("fill", "#FFFFFF")
         .attr("stroke", "#FFC000")
-        .attr("stroke-width", 2);
+        .attr("stroke-width", 2.4);
 
-      // Emoji pin 📌 (larger size)
+      // Emoji pin 📌 (larger 20px size)
       pinBadge.append("text")
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "central")
-        .attr("font-size", "17px")
+        .attr("font-size", "20px")
         .attr("y", 0.5)
         .text("📌");
 
