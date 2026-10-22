@@ -200,19 +200,9 @@
     }
 
     .legend-label {
-      flex: 1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .legend-count {
-      font-size: 11px;
-      color: #64748B;
-      background: #F1F5F9;
-      padding: 1px 7px;
-      border-radius: 10px;
-      font-weight: 600;
     }
 
     /* Brush Selection Box */
@@ -774,27 +764,22 @@
 
       /**
        * DYNAMIC LEGEND GENERATION
-       * Updates automatically with groups and member counts from Google Sheets
+       * Updates automatically with groups from Google Sheets
        */
       function renderDynamicLegend(groups, allNodes) {
         const legendList = document.getElementById("legend-list");
         if (!legendList) return;
         legendList.innerHTML = "";
 
-        const groupCounts = new Map();
-        allNodes.forEach(n => groupCounts.set(n.group, (groupCounts.get(n.group) || 0) + 1));
-
         groups.forEach(groupName => {
           const groupColor = colorScale(groupName);
-          const count = groupCounts.get(groupName) || 0;
 
           const item = document.createElement("div");
           item.className = "legend-item";
-          item.title = `Atzīmēt grupu: ${groupName} (${count} dalībnieki)`;
+          item.title = `Atzīmēt grupu: ${groupName}`;
           item.innerHTML = `
             <span class="legend-color-swatch" style="background-color: ${groupColor};"></span>
             <span class="legend-label">${groupName}</span>
-            <span class="legend-count">${count}</span>
           `;
 
           // Interactive: hover over a legend item highlights all nodes of that group
