@@ -102,11 +102,14 @@
 
     .node .pill-text {
       font-family: var(--font-family-base);
-      font-size: 19px;
-      font-weight: 700;
       pointer-events: none;
       letter-spacing: -0.015em;
       text-anchor: middle;
+    }
+
+    /* Size 3 Hero Card shadow */
+    .node .pill-card.size-3 {
+      filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.18));
     }
 
     /* Pin badge indicator (visible on locked/pinned nodes) */
@@ -409,25 +412,25 @@
      * EMBEDDED DATASET FOR INSTANT LOADING & LOCAL FILE SUPPORT
      */
     const FALLBACK_NODES = [
-      { id: "1", name: "Direktors", group: "Vadība" },
-      { id: "2", name: "Mācību pārzine", group: "Vadība" },
-      { id: "3", name: "Lietvedis", group: "Administrācija" },
-      { id: "4", name: "IT administrators", group: "Administrācija" },
-      { id: "5", name: "Matemātikas skolotājs", group: "Eksaktie priekšmeti" },
-      { id: "6", name: "Fizikas skolotājs", group: "Eksaktie priekšmeti" },
-      { id: "7", name: "Ķīmijas skolotājs", group: "Eksaktie priekšmeti" },
-      { id: "8", name: "Bioloģijas skolotājs", group: "Eksaktie priekšmeti" },
-      { id: "9", name: "Datorikas skolotājs", group: "Eksaktie priekšmeti" },
-      { id: "10", name: "Latviešu valodas skolotājs", group: "Humanitārie priekšmeti" },
-      { id: "11", name: "Angļu valodas skolotājs", group: "Humanitārie priekšmeti" },
-      { id: "12", name: "Vēstures skolotājs", group: "Humanitārie priekšmeti" },
-      { id: "13", name: "Vācu valodas skolotājs", group: "Humanitārie priekšmeti" },
-      { id: "14", name: "Mūzikas skolotājs", group: "Māksla un Sports" },
-      { id: "15", name: "Vizuālās mākslas skolotājs", group: "Māksla un Sports" },
-      { id: "16", name: "Sporta skolotājs", group: "Māksla un Sports" },
-      { id: "17", name: "Skolas psihologs", group: "Atbalsta personāls" },
-      { id: "18", name: "Sociālais pedagogs", group: "Atbalsta personāls" },
-      { id: "19", name: "Bibliotekārs", group: "Atbalsta personāls" }
+      { id: "1", name: "Direktors", group: "Vadība", size: 3 },
+      { id: "2", name: "Mācību pārzine", group: "Vadība", size: 2 },
+      { id: "3", name: "Lietvedis", group: "Administrācija", size: 1 },
+      { id: "4", name: "IT administrators", group: "Administrācija", size: 2 },
+      { id: "5", name: "Matemātikas skolotājs", group: "Eksaktie priekšmeti", size: 1 },
+      { id: "6", name: "Fizikas skolotājs", group: "Eksaktie priekšmeti", size: 1 },
+      { id: "7", name: "Ķīmijas skolotājs", group: "Eksaktie priekšmeti", size: 1 },
+      { id: "8", name: "Bioloģijas skolotājs", group: "Eksaktie priekšmeti", size: 1 },
+      { id: "9", name: "Datorikas skolotājs", group: "Eksaktie priekšmeti", size: 1 },
+      { id: "10", name: "Latviešu valodas skolotājs", group: "Humanitārie priekšmeti", size: 1 },
+      { id: "11", name: "Angļu valodas skolotājs", group: "Humanitārie priekšmeti", size: 1 },
+      { id: "12", name: "Vēstures skolotājs", group: "Humanitārie priekšmeti", size: 1 },
+      { id: "13", name: "Vācu valodas skolotājs", group: "Humanitārie priekšmeti", size: 1 },
+      { id: "14", name: "Mūzikas skolotājs", group: "Māksla un Sports", size: 1 },
+      { id: "15", name: "Vizuālās mākslas skolotājs", group: "Māksla un Sports", size: 1 },
+      { id: "16", name: "Sporta skolotājs", group: "Māksla un Sports", size: 1 },
+      { id: "17", name: "Skolas psihologs", group: "Atbalsta personāls", size: 2 },
+      { id: "18", name: "Sociālais pedagogs", group: "Atbalsta personāls", size: 1 },
+      { id: "19", name: "Bibliotekārs", group: "Atbalsta personāls", size: 1 }
     ];
 
     const FALLBACK_LINKS = [
@@ -474,15 +477,70 @@
         return "";
       };
 
-      // Clean nodes and compute custom pill card widths
+      // Clean nodes and compute custom pill card dimensions based on size scale
       const nodes = rawNodes
         .map((d, index) => {
           const id = getVal(d, "id") || String(index + 1);
           const name = getVal(d, "name") || id;
           const group = getVal(d, "group", "department", "team") || "Default";
-          // Calculate pill width based on larger 19px text length (min 140px)
-          const pillWidth = Math.max(140, name.length * 12.2 + 48);
-          return { id, name, group, pillWidth };
+          
+          // Parse size: numeric (1, 2, 3), default to 1
+          const rawSize = getVal(d, "size", "scale", "importance", "level");
+          let sizeScale = 1;
+          if (rawSize === "3" || rawSize.toLowerCase() === "extra" || rawSize.toLowerCase() === "xl") {
+            sizeScale = 3;
+          } else if (rawSize === "2" || rawSize.toLowerCase() === "large" || rawSize.toLowerCase() === "big" || rawSize.toLowerCase() === "true") {
+            sizeScale = 2;
+          }
+
+          // Dynamic metrics based on scale (1: standard, 2: large, 3: hero/leadership)
+          let pillHeight = 44;
+          let pillRadius = 22;
+          let fontSize = 16;
+          let fontWeight = 600;
+          let textY = 5.5;
+          let pillWidth = Math.max(120, name.length * 10 + 36);
+          let pinRadius = 14;
+          let pinFontSize = 17;
+          let pinOffset = -17;
+
+          if (sizeScale === 2) {
+            pillHeight = 56;
+            pillRadius = 28;
+            fontSize = 20;
+            fontWeight = 700;
+            textY = 7;
+            pillWidth = Math.max(150, name.length * 12.8 + 44);
+            pinRadius = 16;
+            pinFontSize = 20;
+            pinOffset = -21;
+          } else if (sizeScale === 3) {
+            pillHeight = 70;
+            pillRadius = 35;
+            fontSize = 25;
+            fontWeight = 800;
+            textY = 8.5;
+            pillWidth = Math.max(185, name.length * 16 + 52);
+            pinRadius = 19;
+            pinFontSize = 24;
+            pinOffset = -26;
+          }
+
+          return {
+            id,
+            name,
+            group,
+            sizeScale,
+            pillWidth,
+            pillHeight,
+            pillRadius,
+            fontSize,
+            fontWeight,
+            textY,
+            pinRadius,
+            pinFontSize,
+            pinOffset
+          };
         })
         .filter(d => d.id !== "");
 
@@ -538,8 +596,8 @@
         .force("charge", d3.forceManyBody().strength(-380))
         // Center gravity
         .force("center", d3.forceCenter(width / 2, height / 2))
-        // Collision detection sized to larger pill cards so capsules don't overlap
-        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + 22).iterations(3));
+        // Collision detection sized proportionally to pill cards so capsules don't overlap
+        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + (d.sizeScale === 3 ? 28 : d.sizeScale === 2 ? 22 : 16)).iterations(3));
 
       // Draw Smooth Curved Links
       const link = gLinks.selectAll(".link")
@@ -573,43 +631,51 @@
           })
         );
 
-      // Pill Background Capsule (Full Group Color Fill)
+      // Pill Background Capsule (Full Group Color Fill & Proportional Scale)
       node.append("rect")
-        .attr("class", "pill-card")
+        .attr("class", d => `pill-card size-${d.sizeScale}`)
         .attr("x", d => -d.pillWidth / 2)
-        .attr("y", -pillHeight / 2)
+        .attr("y", d => -d.pillHeight / 2)
         .attr("width", d => d.pillWidth)
-        .attr("height", pillHeight)
-        .attr("rx", pillRadius)
-        .attr("ry", pillRadius)
+        .attr("height", d => d.pillHeight)
+        .attr("rx", d => d.pillRadius)
+        .attr("ry", d => d.pillRadius)
         .attr("fill", d => colorScale(d.group))
         .attr("stroke", d => {
           const c = d3.color(colorScale(d.group));
           return c ? c.darker(0.35).formatHex() : "rgba(0,0,0,0.15)";
-        });
+        })
+        .attr("stroke-width", d => d.sizeScale === 3 ? "2.6px" : d.sizeScale === 2 ? "2px" : "1.6px");
 
-      // Centered Staff Member Name Text with Automatic Contrast Color (Large 19px)
+      // Centered Staff Member Name Text with Automatic Contrast Color & Proportional Typography
       node.append("text")
         .attr("class", "pill-text")
         .attr("x", 0)
-        .attr("y", 6.5)
+        .attr("y", d => d.textY)
+        .attr("font-size", d => `${d.fontSize}px`)
+        .attr("font-weight", d => d.fontWeight)
         .attr("fill", d => getContrastTextColor(colorScale(d.group)))
         .text(d => d.name);
 
-      // Pin indicator on top-right for locked/pinned nodes (large badge)
+      // Pin indicator on top-right for locked/pinned nodes (proportional badge)
       const pinBadge = node.append("g")
         .attr("class", "pin-badge")
-        .attr("transform", d => `translate(${d.pillWidth / 2 - 4}, -20)`);
+        .attr("transform", d => `translate(${d.pillWidth / 2 - 4}, ${d.pinOffset})`);
 
       // Circular button backdrop with warm yellow border
       pinBadge.append("circle")
-        .attr("r", 16)
+        .attr("r", d => d.pinRadius)
         .attr("fill", "#FFFFFF")
         .attr("stroke", "#FFC000")
-        .attr("stroke-width", 2.4);
+        .attr("stroke-width", d => d.sizeScale === 3 ? 2.8 : 2.2);
 
-      // Emoji pin 📌 (larger 20px size)
+      // Emoji pin 📌 (proportional size)
       pinBadge.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("font-size", d => `${d.pinFontSize}px`)
+        .attr("y", 0.5)
+        .text("📌");
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "central")
         .attr("font-size", "20px")
