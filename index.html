@@ -232,6 +232,36 @@
       cursor: crosshair !important;
     }
 
+    /* Controls in Top-Left */
+    .control-btn {
+      position: absolute;
+      top: 18px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      z-index: 100;
+    }
+
+    .control-btn:hover {
+      background: #FFFFFF;
+      color: #0F172A;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+      transform: translateY(-1px);
+    }
+
     /* UI Hint */
     .interaction-hint {
       position: absolute;
@@ -251,6 +281,11 @@
 </head>
 <body>
   <div id="graph-container">
+    <!-- Quick Zoom-to-Fit Action Button -->
+    <button id="btn-zoom-fit" class="control-btn" title="Ietilpināt visu koku ekrānā">
+      ⛶ Ietilpināt ekrānā
+    </button>
+
     <!-- Dynamic Top-Right Legend -->
     <div id="legend-card" class="legend-card">
       <div class="legend-header">
@@ -300,8 +335,8 @@
     }
 
     // Canvas dimensions for viewBox (100% responsive fluid scaling)
-    const width = 1800;
-    const height = 1200;
+    const width = 2400;
+    const height = 1800;
     const pillHeight = 52;
     const pillRadius = 26;
 
@@ -648,10 +683,10 @@
       const uniqueGroups = Array.from(allGroupNames).sort();
       colorScale.domain(uniqueGroups);
 
-      // Group centroid calculation in radial orbit around canvas center
+      // Group centroid calculation in wide radial orbit around canvas center
       const groupCount = uniqueGroups.length;
       const groupCenters = new Map();
-      const clusterOrbitRadius = 450;
+      const clusterOrbitRadius = 760;
 
       uniqueGroups.forEach((group, i) => {
         const angle = (i / groupCount) * 2 * Math.PI - Math.PI / 2;
@@ -777,10 +812,10 @@
       renderDynamicLegend(uniqueGroups, allNodes);
 
       /**
-       * D3 FORCE SIMULATION (Radial Force-directed Tree)
+       * D3 FORCE SIMULATION (Radial Force-directed Tree with Spaced-Out Group Hubs)
        */
       const simulation = d3.forceSimulation(allNodes)
-        // Group clustering forces pulling group nodes to their orbit position
+        // Group clustering forces: keep group hubs strictly near their orbit location, pull member nodes into their group's sector
         .force("clusterX", d3.forceX(d => {
           if (d.isGroupNode) {
             const center = groupCenters.get(d.name);
@@ -788,7 +823,7 @@
           }
           const center = groupCenters.get(d.group);
           return center ? center.x : width / 2;
-        }).strength(d => d.isGroupNode ? 0.38 : 0.09))
+        }).strength(d => d.isGroupNode ? 0.45 : 0.18))
         .force("clusterY", d3.forceY(d => {
           if (d.isGroupNode) {
             const center = groupCenters.get(d.name);
@@ -796,19 +831,19 @@
           }
           const center = groupCenters.get(d.group);
           return center ? center.y : height / 2;
-        }).strength(d => d.isGroupNode ? 0.38 : 0.09))
-        // Straight link tree branches
+        }).strength(d => d.isGroupNode ? 0.45 : 0.18))
+        // Straight link tree branches: hold amati snug around group hub (distance 105-115px), loose for cross-department custom links
         .force("link", d3.forceLink(allLinks)
           .id(d => d.id)
-          .distance(d => d.isTreeBranch ? 115 : 210)
-          .strength(d => d.isTreeBranch ? 0.8 : 0.25)
+          .distance(d => d.isTreeBranch ? 112 : 280)
+          .strength(d => d.isTreeBranch ? 0.88 : 0.18)
         )
-        // Node repulsion: group nodes repel more strongly, person nodes gently
-        .force("charge", d3.forceManyBody().strength(d => d.isGroupNode ? -650 : -200))
+        // Node repulsion: group nodes strongly repel each other (-1300) so different departments stay far apart; person nodes repel gently (-160)
+        .force("charge", d3.forceManyBody().strength(d => d.isGroupNode ? -1300 : -160))
         // Center gravity
         .force("center", d3.forceCenter(width / 2, height / 2))
-        // Collision prevention so capsules never overlap
-        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + (d.isGroupNode ? 24 : (d.sizeScale === 3 ? 24 : d.sizeScale === 2 ? 18 : 12))).iterations(3));
+        // Collision prevention so capsules never touch
+        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + (d.isGroupNode ? 32 : (d.sizeScale === 3 ? 24 : d.sizeScale === 2 ? 18 : 12))).iterations(3));
 
       // Draw Straight Tree & Custom Links (<line>)
       const link = gLinks.selectAll(".link")
@@ -1046,8 +1081,49 @@
       }
 
       /**
+       * ZOOM TO FIT HELPER
+       * Fits all groups and member nodes smoothly inside viewport with generous margin
+       */
+      function zoomToFit(transitionDuration = 750) {
+        const bounds = gRoot.node().getBBox();
+        if (!bounds || !bounds.width || !bounds.height) return;
+
+        const padding = 120;
+        const midX = bounds.x + bounds.width / 2;
+        const midY = bounds.y + bounds.height / 2;
+
+        const scale = Math.min(
+          (width - padding * 2) / bounds.width,
+          (height - padding * 2) / bounds.height
+        );
+
+        const clampedScale = Math.max(0.2, Math.min(1.05, scale));
+        const translateX = width / 2 - midX * clampedScale;
+        const translateY = height / 2 - midY * clampedScale;
+
+        const transform = d3.zoomIdentity
+          .translate(translateX, translateY)
+          .scale(clampedScale);
+
+        if (transitionDuration > 0) {
+          svg.transition().duration(transitionDuration).ease(d3.easeCubicOut).call(zoom.transform, transform);
+        } else {
+          svg.call(zoom.transform, transform);
+        }
+      }
+
+      // Connect "Ietilpināt ekrānā" button click
+      const btnFit = document.getElementById("btn-zoom-fit");
+      if (btnFit) {
+        btnFit.onclick = () => zoomToFit(600);
+      }
+
+      /**
        * SIMULATION TICK: Straight lines (<line>) and positioned nodes
        */
+      let hasAutoFit = false;
+      let tickCount = 0;
+
       simulation.on("tick", () => {
         link
           .attr("x1", d => d.source.x)
@@ -1055,6 +1131,13 @@
           .attr("x2", d => d.target.x)
           .attr("y2", d => d.target.y);
         node.attr("transform", d => `translate(${d.x},${d.y})`);
+
+        tickCount++;
+        // Automatically zoom to fit once initial burst stabilizes (around tick 80 or low alpha)
+        if (!hasAutoFit && (tickCount > 80 || simulation.alpha() < 0.2)) {
+          hasAutoFit = true;
+          zoomToFit(850);
+        }
       });
     }
 
