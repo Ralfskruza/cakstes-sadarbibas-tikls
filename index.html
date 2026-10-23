@@ -67,20 +67,25 @@
       cursor: grabbing !important;
     }
 
-    /* Curved Links */
+    /* Straight Tree Links */
     .link {
-      fill: none;
-      stroke: var(--link-color);
-      stroke-width: 2.4px;
+      stroke: #CBD5E1;
+      stroke-width: 1.6px;
       stroke-linecap: round;
-      opacity: 0.72;
+      opacity: 0.75;
       transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
     }
 
     .link:hover {
-      stroke: var(--link-hover);
-      stroke-width: 3.4px;
+      stroke: #64748B;
+      stroke-width: 2.6px;
       opacity: 1;
+    }
+
+    .link.custom-link {
+      stroke: #94A3B8;
+      stroke-width: 2px;
+      stroke-dasharray: 4, 3;
     }
 
     /* Pill Card Nodes */
@@ -90,14 +95,19 @@
     }
 
     .node .pill-card {
-      stroke-width: 2px;
+      stroke-width: 1.6px;
       filter: url(#pill-shadow);
       transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease, transform 0.15s ease;
     }
 
     .node:hover .pill-card {
-      stroke-width: 2.6px;
       filter: url(#pill-shadow-hover);
+    }
+
+    /* Group Node styling */
+    .node.group-node .pill-card {
+      stroke-width: 2.4px;
+      filter: drop-shadow(0 3px 12px rgba(0, 0, 0, 0.16));
     }
 
     .node .pill-text {
@@ -453,7 +463,7 @@
     }
 
     /**
-     * RENDER D3 FORCE GRAPH WITH CAPSULE PILLS & CLUSTERING
+     * RENDER D3 FORCE-DIRECTED TREE WITH GROUP HUBS & POSITION NODES
      */
     function renderNetwork(rawNodes, rawLinks) {
       const getVal = (row, ...names) => {
@@ -467,8 +477,8 @@
         return "";
       };
 
-      // Clean nodes and compute custom pill card dimensions based on size scale
-      const nodes = rawNodes
+      // 1. Clean and parse individual role / position nodes from raw CSV data
+      const personNodes = rawNodes
         .filter(d => {
           const name = getVal(d, "name");
           const id = getVal(d, "id");
@@ -492,9 +502,9 @@
           let pillHeight = 44;
           let pillRadius = 22;
           let fontSize = 16;
-          let fontWeight = 600;
+          let fontWeight = 500;
           let textY = 5.5;
-          let pillWidth = Math.max(120, name.length * 10 + 36);
+          let pillWidth = Math.max(120, name.length * 9.8 + 36);
           let pinRadius = 14;
           let pinFontSize = 17;
           let pinOffset = -17;
@@ -502,20 +512,20 @@
           if (sizeScale === 2) {
             pillHeight = 56;
             pillRadius = 28;
-            fontSize = 20;
-            fontWeight = 700;
+            fontSize = 19;
+            fontWeight = 600;
             textY = 7;
-            pillWidth = Math.max(150, name.length * 12.8 + 44);
+            pillWidth = Math.max(150, name.length * 12.2 + 44);
             pinRadius = 16;
             pinFontSize = 20;
             pinOffset = -21;
           } else if (sizeScale === 3) {
             pillHeight = 70;
             pillRadius = 35;
-            fontSize = 25;
-            fontWeight = 800;
+            fontSize = 24;
+            fontWeight = 700;
             textY = 8.5;
-            pillWidth = Math.max(185, name.length * 16 + 52);
+            pillWidth = Math.max(185, name.length * 15.5 + 52);
             pinRadius = 19;
             pinFontSize = 24;
             pinOffset = -26;
@@ -526,6 +536,7 @@
             name,
             group,
             sizeScale,
+            isGroupNode: false,
             pillWidth,
             pillHeight,
             pillRadius,
@@ -539,30 +550,14 @@
         })
         .filter(d => d.id !== "");
 
-      const nodeMap = new Map(nodes.map(n => [n.id, n]));
-
-      // Filter valid links
-      const links = rawLinks
-        .map(d => ({
-          source: getVal(d, "source", "from"),
-          target: getVal(d, "target", "to")
-        }))
-        .filter(d => d.source && d.target && nodeMap.has(d.source) && nodeMap.has(d.target));
-
-      // Group domains and group cluster targets
-      const uniqueGroups = Array.from(new Set(nodes.map(d => d.group))).sort();
+      // 2. Discover all unique groups to form tree branch hubs
+      const uniqueGroups = Array.from(new Set(personNodes.map(d => d.group))).sort();
       colorScale.domain(uniqueGroups);
 
-      // Render Dynamic Legend in top-right corner
-      renderDynamicLegend(uniqueGroups, nodes);
-
-      /**
-       * GROUP CLUSTERING CALCULATIONS ("Grupas turas kopā")
-       * Assigns each department/group a circular centroid hub around the canvas center.
-       */
+      // Group centroid calculation in radial orbit around canvas center
       const groupCount = uniqueGroups.length;
       const groupCenters = new Map();
-      const clusterOrbitRadius = 460;
+      const clusterOrbitRadius = 450;
 
       uniqueGroups.forEach((group, i) => {
         const angle = (i / groupCount) * 2 * Math.PI - Math.PI / 2;
@@ -572,39 +567,119 @@
         });
       });
 
+      // 3. Create Group Hub Nodes (Large, colored, prominent)
+      const groupNodes = uniqueGroups.map(groupName => {
+        const center = groupCenters.get(groupName) || { x: width / 2, y: height / 2 };
+        const pillWidth = Math.max(140, groupName.length * 11 + 46);
+        const pillHeight = 54;
+        const pillRadius = 27;
+        return {
+          id: "group_" + groupName,
+          name: groupName,
+          group: groupName,
+          isGroupNode: true,
+          sizeScale: 2,
+          pillWidth,
+          pillHeight,
+          pillRadius,
+          fontSize: 18,
+          fontWeight: 700,
+          textY: 6.5,
+          pinRadius: 16,
+          pinFontSize: 20,
+          pinOffset: -20,
+          x: center.x,
+          y: center.y
+        };
+      });
+
+      // Give person nodes initial coordinates near their group center for smooth unfolding
+      personNodes.forEach(pn => {
+        const c = groupCenters.get(pn.group) || { x: width / 2, y: height / 2 };
+        pn.x = c.x + (Math.random() - 0.5) * 100;
+        pn.y = c.y + (Math.random() - 0.5) * 100;
+      });
+
+      // Combined node list
+      const allNodes = [...groupNodes, ...personNodes];
+      const nodeMap = new Map();
+      allNodes.forEach(n => {
+        nodeMap.set(n.id, n);
+        nodeMap.set(n.name, n);
+      });
+
+      // 4. Generate Tree Branch Links (Group Hub -> Person Node)
+      const treeLinks = personNodes.map(pn => ({
+        source: "group_" + pn.group,
+        target: pn.id,
+        isTreeBranch: true
+      }));
+
+      // 5. Custom inter-node links from links.csv
+      const customLinks = (rawLinks || [])
+        .map(d => {
+          const s = getVal(d, "source", "from");
+          const t = getVal(d, "target", "to");
+          return { source: s, target: t };
+        })
+        .filter(d => d.source && d.target && nodeMap.has(d.source) && nodeMap.has(d.target))
+        .map(d => ({
+          source: nodeMap.get(d.source).id,
+          target: nodeMap.get(d.target).id,
+          isTreeBranch: false
+        }));
+
+      // Combined links list
+      const allLinks = [...treeLinks, ...customLinks];
+
+      // Render Dynamic Legend in top-right corner
+      renderDynamicLegend(uniqueGroups, allNodes);
+
       /**
-       * D3 FORCE SIMULATION
+       * D3 FORCE SIMULATION (Radial Force-directed Tree)
        */
-      const simulation = d3.forceSimulation(nodes)
-        // Group clustering forces: gently pull each node to its group's cluster region
+      const simulation = d3.forceSimulation(allNodes)
+        // Group clustering forces pulling group nodes to their orbit position
         .force("clusterX", d3.forceX(d => {
+          if (d.isGroupNode) {
+            const center = groupCenters.get(d.name);
+            return center ? center.x : width / 2;
+          }
           const center = groupCenters.get(d.group);
           return center ? center.x : width / 2;
-        }).strength(0.24))
+        }).strength(d => d.isGroupNode ? 0.38 : 0.09))
         .force("clusterY", d3.forceY(d => {
+          if (d.isGroupNode) {
+            const center = groupCenters.get(d.name);
+            return center ? center.y : height / 2;
+          }
           const center = groupCenters.get(d.group);
           return center ? center.y : height / 2;
-        }).strength(0.24))
-        // Link distances
-        .force("link", d3.forceLink(links).id(d => d.id).distance(170).strength(0.35))
-        // Node repulsion
-        .force("charge", d3.forceManyBody().strength(-380))
+        }).strength(d => d.isGroupNode ? 0.38 : 0.09))
+        // Straight link tree branches
+        .force("link", d3.forceLink(allLinks)
+          .id(d => d.id)
+          .distance(d => d.isTreeBranch ? 115 : 210)
+          .strength(d => d.isTreeBranch ? 0.8 : 0.25)
+        )
+        // Node repulsion: group nodes repel more strongly, person nodes gently
+        .force("charge", d3.forceManyBody().strength(d => d.isGroupNode ? -650 : -200))
         // Center gravity
         .force("center", d3.forceCenter(width / 2, height / 2))
-        // Collision detection sized proportionally to pill cards so capsules don't overlap
-        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + (d.sizeScale === 3 ? 28 : d.sizeScale === 2 ? 22 : 16)).iterations(3));
+        // Collision prevention so capsules never overlap
+        .force("collide", d3.forceCollide(d => d.pillWidth / 2 + (d.isGroupNode ? 24 : (d.sizeScale === 3 ? 24 : d.sizeScale === 2 ? 18 : 12))).iterations(3));
 
-      // Draw Smooth Curved Links
+      // Draw Straight Tree & Custom Links (<line>)
       const link = gLinks.selectAll(".link")
-        .data(links)
-        .join("path")
-        .attr("class", "link");
+        .data(allLinks)
+        .join("line")
+        .attr("class", d => `link ${d.isTreeBranch ? "tree-branch" : "custom-link"}`);
 
-      // Draw Pill Capsule Node Groups
+      // Draw Node Groups
       const node = gNodes.selectAll(".node")
-        .data(nodes)
+        .data(allNodes)
         .join("g")
-        .attr("class", "node")
+        .attr("class", d => `node ${d.isGroupNode ? "group-node" : "person-node"}`)
         .call(d3.drag()
           .on("start", (event, d) => {
             if (event.sourceEvent) event.sourceEvent.stopPropagation();
@@ -618,7 +693,6 @@
           })
           .on("end", (event, d) => {
             if (!event.active) simulation.alphaTarget(0);
-            // If pinned, stays locked at its new dragged position; if not pinned, dynamic simulation resumes
             if (!d.isPinned) {
               d.fx = null;
               d.fy = null;
@@ -626,45 +700,51 @@
           })
         );
 
-      // Pill Background Capsule (Full Group Color Fill & Proportional Scale)
+      // Pill Background Capsule
+      // - Group nodes: fully colored by group with crisp contrast text
+      // - Person/role nodes: neutral white card with clean border and dark text
       node.append("rect")
-        .attr("class", d => `pill-card size-${d.sizeScale}`)
+        .attr("class", d => `pill-card ${d.isGroupNode ? "group-pill" : `size-${d.sizeScale}`}`)
         .attr("x", d => -d.pillWidth / 2)
         .attr("y", d => -d.pillHeight / 2)
         .attr("width", d => d.pillWidth)
         .attr("height", d => d.pillHeight)
         .attr("rx", d => d.pillRadius)
         .attr("ry", d => d.pillRadius)
-        .attr("fill", d => colorScale(d.group))
+        .attr("fill", d => d.isGroupNode ? colorScale(d.group) : "#FFFFFF")
         .attr("stroke", d => {
-          const c = d3.color(colorScale(d.group));
-          return c ? c.darker(0.35).formatHex() : "rgba(0,0,0,0.15)";
+          if (d.isGroupNode) {
+            const c = d3.color(colorScale(d.group));
+            return c ? c.darker(0.35).formatHex() : "rgba(0,0,0,0.2)";
+          }
+          return "#CBD5E1";
         })
-        .attr("stroke-width", d => d.sizeScale === 3 ? "2.6px" : d.sizeScale === 2 ? "2px" : "1.6px");
+        .attr("stroke-width", d => {
+          if (d.isGroupNode) return "2.5px";
+          return d.sizeScale === 3 ? "2.6px" : d.sizeScale === 2 ? "2px" : "1.6px";
+        });
 
-      // Centered Staff Member Name Text with Automatic Contrast Color & Proportional Typography
+      // Capsule Text (Group Hub or Staff Member)
       node.append("text")
         .attr("class", "pill-text")
         .attr("x", 0)
         .attr("y", d => d.textY)
         .attr("font-size", d => `${d.fontSize}px`)
         .attr("font-weight", d => d.fontWeight)
-        .attr("fill", d => getContrastTextColor(colorScale(d.group)))
+        .attr("fill", d => d.isGroupNode ? getContrastTextColor(colorScale(d.group)) : "#1E293B")
         .text(d => d.name);
 
-      // Pin indicator on top-right for locked/pinned nodes (proportional badge)
+      // Pin indicator on top-right for locked/pinned nodes
       const pinBadge = node.append("g")
         .attr("class", "pin-badge")
         .attr("transform", d => `translate(${d.pillWidth / 2 - 4}, ${d.pinOffset})`);
 
-      // Circular button backdrop with warm yellow border
       pinBadge.append("circle")
         .attr("r", d => d.pinRadius)
         .attr("fill", "#FFFFFF")
         .attr("stroke", "#FFC000")
         .attr("stroke-width", d => d.sizeScale === 3 ? 2.8 : 2.2);
 
-      // Emoji pin 📌 (proportional size)
       pinBadge.append("text")
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "central")
@@ -676,13 +756,11 @@
       node.on("click", (event, d) => {
         event.stopPropagation();
         if (d.isPinned) {
-          // Unpin and release back to dynamic simulation
           d.isPinned = false;
           d.fx = null;
           d.fy = null;
           selectedNodeIds.delete(d.id);
         } else {
-          // Lock and pin in current position
           d.isPinned = true;
           d.fx = d.x;
           d.fy = d.y;
@@ -692,11 +770,35 @@
         applyVisualHighlights();
       });
 
+      // Hover feedback to easily trace relationships
+      node.on("mouseenter", (event, d) => {
+        const connectedIds = new Set();
+        connectedIds.add(d.id);
+        allLinks.forEach(l => {
+          const sId = l.source.id || l.source;
+          const tId = l.target.id || l.target;
+          if (sId === d.id) connectedIds.add(tId);
+          if (tId === d.id) connectedIds.add(sId);
+        });
+
+        node.style("opacity", n => connectedIds.has(n.id) ? 1 : 0.22);
+        link.style("opacity", l => {
+          const sId = l.source.id || l.source;
+          const tId = l.target.id || l.target;
+          return (sId === d.id || tId === d.id) ? 1 : 0.08;
+        });
+      });
+
+      node.on("mouseleave", () => {
+        node.style("opacity", 1);
+        link.style("opacity", 0.75);
+      });
+
       // Clear selection contrast on background click (keeps pinned nodes pinned)
       svg.on("click", (event) => {
         if (event.target === svg.node() || event.target.classList.contains("canvas-backdrop")) {
           selectedNodeIds.clear();
-          nodes.forEach(n => {
+          allNodes.forEach(n => {
             if (n.isPinned) selectedNodeIds.add(n.id);
           });
           applyVisualHighlights();
@@ -713,7 +815,7 @@
           const [[x0, y0], [x1, y1]] = event.selection;
 
           selectedNodeIds.clear();
-          nodes.forEach(d => {
+          allNodes.forEach(d => {
             if (d.x >= x0 && d.x <= x1 && d.y >= y0 && d.y <= y1) {
               selectedNodeIds.add(d.id);
             }
@@ -734,7 +836,6 @@
 
       /**
        * VISUAL STATE UPDATE
-       * Highlights pinned/selected nodes while keeping all other nodes and links 100% visible.
        */
       function applyVisualHighlights() {
         node.each(function(d) {
@@ -746,27 +847,9 @@
       }
 
       /**
-       * CURVED LINK GENERATOR
-       * Creates soft, organic curved paths between pill cards
-       */
-      function computeCurvedPath(d) {
-        const dx = d.target.x - d.source.x;
-        const dy = d.target.y - d.source.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        // Organic curve arc offset
-        const curveOffset = Math.min(26, dist * 0.1);
-        const mx = (d.source.x + d.target.x) / 2 - (dy / (dist || 1)) * curveOffset;
-        const my = (d.source.y + d.target.y) / 2 + (dx / (dist || 1)) * curveOffset;
-
-        return `M ${d.source.x} ${d.source.y} Q ${mx} ${my} ${d.target.x} ${d.target.y}`;
-      }
-
-      /**
        * DYNAMIC LEGEND GENERATION
-       * Updates automatically with groups from Google Sheets
        */
-      function renderDynamicLegend(groups, allNodes) {
+      function renderDynamicLegend(groups, nodesList) {
         const legendList = document.getElementById("legend-list");
         if (!legendList) return;
         legendList.innerHTML = "";
@@ -782,22 +865,26 @@
             <span class="legend-label">${groupName}</span>
           `;
 
-          // Interactive: hover over a legend item highlights all nodes of that group
+          // Interactive: hover highlights this group's hub and all member nodes
           item.addEventListener("mouseenter", () => {
             node.style("opacity", d => d.group === groupName ? 1 : 0.22);
-            link.style("opacity", d => (d.source.group === groupName && d.target.group === groupName) ? 0.9 : 0.08);
+            link.style("opacity", d => {
+              const sGroup = d.source.group || d.source.name;
+              const tGroup = d.target.group || d.target.name;
+              return (sGroup === groupName || tGroup === groupName) ? 0.95 : 0.08;
+            });
           });
 
           item.addEventListener("mouseleave", () => {
             node.style("opacity", 1);
-            link.style("opacity", 0.72);
+            link.style("opacity", 0.75);
           });
 
           // Click on legend item toggles pin/lock for all nodes in that group
           item.addEventListener("click", () => {
-            const groupNodes = allNodes.filter(d => d.group === groupName);
-            const allPinned = groupNodes.every(d => d.isPinned);
-            groupNodes.forEach(d => {
+            const groupMembers = nodesList.filter(d => d.group === groupName);
+            const allPinned = groupMembers.every(d => d.isPinned);
+            groupMembers.forEach(d => {
               d.isPinned = !allPinned;
               if (d.isPinned) {
                 d.fx = d.x;
@@ -818,10 +905,14 @@
       }
 
       /**
-       * SIMULATION TICK
+       * SIMULATION TICK: Straight lines (<line>) and positioned nodes
        */
       simulation.on("tick", () => {
-        link.attr("d", computeCurvedPath);
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
         node.attr("transform", d => `translate(${d.x},${d.y})`);
       });
     }
