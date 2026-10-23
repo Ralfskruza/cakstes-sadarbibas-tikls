@@ -67,10 +67,10 @@
       cursor: grabbing !important;
     }
 
-    /* Straight Tree Links */
+    /* Straight Links (Tree & Custom) */
     .link {
       stroke: #CBD5E1;
-      stroke-width: 1.6px;
+      stroke-width: 1.8px;
       stroke-linecap: round;
       opacity: 0.75;
       transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
@@ -78,14 +78,8 @@
 
     .link:hover {
       stroke: #64748B;
-      stroke-width: 2.6px;
+      stroke-width: 2.8px;
       opacity: 1;
-    }
-
-    .link.custom-link {
-      stroke: #94A3B8;
-      stroke-width: 2px;
-      stroke-dasharray: 4, 3;
     }
 
     /* Pill Card Nodes */
@@ -439,6 +433,109 @@
     ];
 
     /**
+     * CSV ROW PARSER HELPERS
+     * Resilient to empty cells, side-by-side columns, and missing headers.
+     */
+    function parseRowValues(rowArr) {
+      let name = "";
+      let group = "";
+      let size = "";
+
+      const clean = rowArr.map(c => (c || "").trim()).filter(Boolean);
+      if (!clean.length) return null;
+
+      const sIdx = clean.findIndex(v => /^[123]$/.test(v));
+      if (sIdx !== -1) {
+        size = clean[sIdx];
+        clean.splice(sIdx, 1);
+      }
+
+      if (clean.length === 1) {
+        group = clean[0];
+      } else if (clean.length >= 2) {
+        name = clean[0];
+        group = clean[1];
+      }
+
+      return { name, group, size };
+    }
+
+    function parseNodesCsv(csvText) {
+      if (!csvText || !csvText.trim()) return [];
+      const lines = csvText.split("\n").map(l => l.replace("\r", "")).filter(l => l.trim() !== "");
+      if (!lines.length) return [];
+      const header = lines[0].split(",").map(h => h.trim().toLowerCase());
+
+      let idCol = header.findIndex(h => h === "id");
+      let nameCol = header.findIndex(h => h === "name");
+      let groupCol = header.findIndex(h => h === "group");
+      let sizeCol = header.findIndex(h => h.startsWith("size"));
+
+      if (idCol === -1) idCol = 0;
+      if (nameCol === -1) nameCol = 1;
+      if (groupCol === -1) groupCol = 2;
+      if (sizeCol === -1) sizeCol = 3;
+
+      const results = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map(c => c.trim());
+        const primaryCols = cols.slice(0, 4);
+        const hasPrimary = primaryCols.some(c => c !== "");
+
+        if (hasPrimary) {
+          let id = cols[idCol] || "";
+          let name = cols[nameCol] || "";
+          let group = cols[groupCol] || "";
+          let size = cols[sizeCol] || "";
+
+          if (name || group) {
+            results.push({ id, name, group, size });
+          }
+
+          // Check if side-by-side extra data was placed in columns 4+
+          if (cols.length > 4) {
+            const extra = parseRowValues(cols.slice(4));
+            if (extra && (extra.name || extra.group)) {
+              results.push({ id: "", name: extra.name, group: extra.group, size: extra.size });
+            }
+          }
+        } else {
+          // Primary columns empty, whole row shifted to column 4+
+          const item = parseRowValues(cols);
+          if (item && (item.name || item.group)) {
+            results.push({ id: "", name: item.name, group: item.group, size: item.size });
+          }
+        }
+      }
+
+      return results;
+    }
+
+    function parseLinksCsv(csvText) {
+      if (!csvText || !csvText.trim()) return [];
+      const lines = csvText.split("\n").map(l => l.replace("\r", "")).filter(l => l.trim() !== "");
+      if (lines.length < 2) return [];
+
+      const header = lines[0].split(",").map(h => h.trim().toLowerCase());
+      let sCol = header.findIndex(h => /^(source|from|avots|no)$/i.test(h));
+      let tCol = header.findIndex(h => /^(target|to|mērķis|uz)$/i.test(h));
+      if (sCol === -1) sCol = 0;
+      if (tCol === -1) tCol = 1;
+
+      const links = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map(c => c.trim());
+        const source = cols[sCol] || "";
+        const target = cols[tCol] || "";
+        if (source && target) {
+          links.push({ source, target });
+        }
+      }
+      return links;
+    }
+
+    /**
      * INITIALIZE NETWORK
      */
     async function initGraph() {
@@ -446,16 +543,19 @@
       const freshUrl = (url) => url + (url.includes("?") ? "&" : "?") + "_cacheBust=" + Date.now();
 
       try {
-        const [nodesData, linksData] = await Promise.all([
-          d3.csv(freshUrl(NODES_CSV_URL)),
-          d3.csv(freshUrl(LINKS_CSV_URL))
+        const [nodesText, linksText] = await Promise.all([
+          d3.text(freshUrl(NODES_CSV_URL)),
+          d3.text(freshUrl(LINKS_CSV_URL))
         ]);
 
-        if (!nodesData || !nodesData.length) {
+        const rawNodes = parseNodesCsv(nodesText);
+        const rawLinks = parseLinksCsv(linksText);
+
+        if (!rawNodes || !rawNodes.length) {
           throw new Error("Nodes CSV empty");
         }
 
-        renderNetwork(nodesData, linksData || []);
+        renderNetwork(rawNodes, rawLinks);
       } catch (err) {
         console.warn("Could not fetch live Google Sheets data directly (browser file:// origin restriction). Using fallback dataset:", err);
         renderNetwork(FALLBACK_NODES, FALLBACK_LINKS);
@@ -466,39 +566,24 @@
      * RENDER D3 FORCE-DIRECTED TREE WITH GROUP HUBS & POSITION NODES
      */
     function renderNetwork(rawNodes, rawLinks) {
-      const getVal = (row, ...names) => {
-        const keys = Object.keys(row);
-        for (const name of names) {
-          const match = keys.find(k => k.trim().toLowerCase() === name.toLowerCase());
-          if (match && row[match] !== undefined && row[match] !== null && String(row[match]).trim() !== "") {
-            return String(row[match]).trim();
-          }
-        }
-        return "";
-      };
+      // 1. Separate person nodes and standalone group definitions
+      const groupDefinitions = new Map();
+      const personNodes = [];
 
-      // 1. Clean and parse individual role / position nodes from raw CSV data
-      const personNodes = rawNodes
-        .filter(d => {
-          const name = getVal(d, "name");
-          const id = getVal(d, "id");
-          return name !== "" || id !== "";
-        })
-        .map((d, index) => {
-          const id = getVal(d, "id") || String(index + 1);
-          const name = getVal(d, "name") || `Persona ${id}`;
-          const group = getVal(d, "group", "department", "team") || "Cits";
-          
-          // Parse size: numeric (1, 2, 3), default to 1
-          const rawSize = getVal(d, "size", "scale", "importance", "level");
-          let sizeScale = 1;
-          if (rawSize === "3" || rawSize.toLowerCase() === "extra" || rawSize.toLowerCase() === "xl") {
-            sizeScale = 3;
-          } else if (rawSize === "2" || rawSize.toLowerCase() === "large" || rawSize.toLowerCase() === "big" || rawSize.toLowerCase() === "true") {
-            sizeScale = 2;
-          }
+      rawNodes.forEach((row, idx) => {
+        const name = (row.name || "").trim();
+        const group = (row.group || "").trim();
+        const rawSize = String(row.size || "").trim();
+        let sizeScale = 1;
+        if (rawSize === "3" || rawSize.toLowerCase() === "xl" || rawSize.toLowerCase() === "extra") sizeScale = 3;
+        else if (rawSize === "2" || rawSize.toLowerCase() === "large" || rawSize.toLowerCase() === "big" || rawSize.toLowerCase() === "true") sizeScale = 2;
 
-          // Dynamic metrics based on scale (1: standard, 2: large, 3: hero/leadership)
+        if (!name && group) {
+          // Exactly user requirement: only Group is specified!
+          groupDefinitions.set(group, { sizeScale });
+        } else if (name) {
+          const id = (row.id || "").trim() || ("person_" + (idx + 1));
+
           let pillHeight = 44;
           let pillRadius = 22;
           let fontSize = 16;
@@ -531,10 +616,11 @@
             pinOffset = -26;
           }
 
-          return {
+          personNodes.push({
             id,
             name,
-            group,
+            group: group || "Cits",
+            hasExplicitGroup: !!group,
             sizeScale,
             isGroupNode: false,
             pillWidth,
@@ -546,12 +632,20 @@
             pinRadius,
             pinFontSize,
             pinOffset
-          };
-        })
-        .filter(d => d.id !== "");
+          });
+        }
+      });
 
-      // 2. Discover all unique groups to form tree branch hubs
-      const uniqueGroups = Array.from(new Set(personNodes.map(d => d.group))).sort();
+      // 2. Discover all unique groups (from explicit groups + standalone groups)
+      const allGroupNames = new Set();
+      personNodes.forEach(p => {
+        if (p.hasExplicitGroup) allGroupNames.add(p.group);
+      });
+      groupDefinitions.forEach((def, gName) => {
+        allGroupNames.add(gName);
+      });
+
+      const uniqueGroups = Array.from(allGroupNames).sort();
       colorScale.domain(uniqueGroups);
 
       // Group centroid calculation in radial orbit around canvas center
@@ -569,25 +663,55 @@
 
       // 3. Create Group Hub Nodes (Large, colored, prominent)
       const groupNodes = uniqueGroups.map(groupName => {
+        const def = groupDefinitions.get(groupName) || {};
+        const sizeScale = def.sizeScale || 2;
         const center = groupCenters.get(groupName) || { x: width / 2, y: height / 2 };
-        const pillWidth = Math.max(140, groupName.length * 11 + 46);
-        const pillHeight = 54;
-        const pillRadius = 27;
+
+        let pillHeight = 54;
+        let pillRadius = 27;
+        let fontSize = 18;
+        let fontWeight = 700;
+        let textY = 6.5;
+        let pillWidth = Math.max(140, groupName.length * 11 + 46);
+        let pinRadius = 16;
+        let pinFontSize = 20;
+        let pinOffset = -20;
+
+        if (sizeScale === 3) {
+          pillHeight = 70;
+          pillRadius = 35;
+          fontSize = 24;
+          textY = 8.5;
+          pillWidth = Math.max(180, groupName.length * 15 + 50);
+          pinRadius = 19;
+          pinFontSize = 24;
+          pinOffset = -26;
+        } else if (sizeScale === 1) {
+          pillHeight = 46;
+          pillRadius = 23;
+          fontSize = 16;
+          textY = 5.5;
+          pillWidth = Math.max(130, groupName.length * 10 + 38);
+          pinRadius = 14;
+          pinFontSize = 17;
+          pinOffset = -18;
+        }
+
         return {
           id: "group_" + groupName,
           name: groupName,
           group: groupName,
           isGroupNode: true,
-          sizeScale: 2,
+          sizeScale,
           pillWidth,
           pillHeight,
           pillRadius,
-          fontSize: 18,
-          fontWeight: 700,
-          textY: 6.5,
-          pinRadius: 16,
-          pinFontSize: 20,
-          pinOffset: -20,
+          fontSize,
+          fontWeight,
+          textY,
+          pinRadius,
+          pinFontSize,
+          pinOffset,
           x: center.x,
           y: center.y
         };
@@ -602,32 +726,49 @@
 
       // Combined node list
       const allNodes = [...groupNodes, ...personNodes];
-      const nodeMap = new Map();
-      allNodes.forEach(n => {
-        nodeMap.set(n.id, n);
-        nodeMap.set(n.name, n);
+
+      // Build Normalized Lookup Map for Links
+      // Matches by Position/Role Name, Group Name, or ID (case-insensitive, trimmed)
+      const norm = s => String(s || "").trim().toLowerCase();
+      const lookup = new Map();
+
+      groupNodes.forEach(g => {
+        lookup.set(norm(g.id), g.id);
+        lookup.set(norm(g.name), g.id);
+        lookup.set(norm(g.group), g.id);
+      });
+
+      personNodes.forEach(p => {
+        lookup.set(norm(p.id), p.id);
+        lookup.set(norm(p.name), p.id);
       });
 
       // 4. Generate Tree Branch Links (Group Hub -> Person Node)
-      const treeLinks = personNodes.map(pn => ({
-        source: "group_" + pn.group,
-        target: pn.id,
-        isTreeBranch: true
-      }));
+      const treeLinks = personNodes
+        .filter(p => p.hasExplicitGroup)
+        .map(pn => ({
+          source: "group_" + pn.group,
+          target: pn.id,
+          isTreeBranch: true
+        }));
 
-      // 5. Custom inter-node links from links.csv
+      // 5. Custom inter-node links from links.csv (resolves by name or group or ID)
       const customLinks = (rawLinks || [])
         .map(d => {
-          const s = getVal(d, "source", "from");
-          const t = getVal(d, "target", "to");
-          return { source: s, target: t };
+          const sRaw = d.source || "";
+          const tRaw = d.target || "";
+          const sId = lookup.get(norm(sRaw));
+          const tId = lookup.get(norm(tRaw));
+          if (sId && tId && sId !== tId) {
+            return {
+              source: sId,
+              target: tId,
+              isTreeBranch: false
+            };
+          }
+          return null;
         })
-        .filter(d => d.source && d.target && nodeMap.has(d.source) && nodeMap.has(d.target))
-        .map(d => ({
-          source: nodeMap.get(d.source).id,
-          target: nodeMap.get(d.target).id,
-          isTreeBranch: false
-        }));
+        .filter(Boolean);
 
       // Combined links list
       const allLinks = [...treeLinks, ...customLinks];
